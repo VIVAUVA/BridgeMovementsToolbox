@@ -19,6 +19,7 @@ Copyright: (c) 2015
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+# Import arcpy
 import arcpy as ap
 import numpy as np
 import os
@@ -61,13 +62,13 @@ class BridgeMovements(object):
         bridge_layer.value = "Bridges_Demo_Data"
 
         # Parameter: the symbology layer containing color symbology for output
-        symbol_layer = ap.Parameter(
-            displayName="Layer containing color symbology",
-            name="symbol_layer",
-            datatype="GPFeatureLayer",
-            parameterType="Required",
-            direction="Input")
-        symbol_layer.value = "BridgeMovementsSymbology"
+        # symbol_layer = ap.Parameter(
+            # displayName="Layer containing color symbology",
+            # name="symbol_layer",
+            # datatype="GPFeatureLayer",
+            # parameterType="Required",
+            # direction="Input")
+        # symbol_layer.value = "BridgeMovementsSymbology"
 
         # Parameter: threshold for warning situation
         warn_thresh = ap.Parameter(
@@ -96,7 +97,8 @@ class BridgeMovements(object):
             parameterType="Required",
             direction="Output")
 
-        params = [sqsar_layer, bridge_layer, symbol_layer, warn_thresh, critical_thresh, out_layer]
+        # params = [sqsar_layer, bridge_layer, symbol_layer, warn_thresh, critical_thresh, out_layer]
+        params = [sqsar_layer, bridge_layer, warn_thresh, critical_thresh, out_layer]
 
         return params
 
@@ -133,21 +135,21 @@ class BridgeMovements(object):
         bridge_y = bridge_y.astype(np.float)
 
         # Get the symbology layer
-        symbol_layer = parameters[2].valueAsText
-        ap.AddMessage("Symbology layer: {0}".format(symbol_layer))
+        # symbol_layer = parameters[2].valueAsText
+        # ap.AddMessage("Symbology layer: {0}".format(symbol_layer))
 
         # Get the warning threshold
-        warn_thresh = parameters[3].valueAsText
+        warn_thresh = parameters[2].valueAsText
         warn_thresh = float(warn_thresh)
         ap.AddMessage("Warning threshold: {0} inches per year".format(warn_thresh))
 
         # Get the critical threshold
-        critical_thresh = parameters[4].valueAsText
+        critical_thresh = parameters[3].valueAsText
         critical_thresh = float(critical_thresh)
         ap.AddMessage("Critical threshold: {0} inches per month".format(critical_thresh))
 
         # OUTPUT
-        out_layer = parameters[5].valueAsText
+        out_layer = parameters[4].valueAsText
         ap.AddMessage("Output layer: {0}".format(out_layer))
 
         # Copy the bridge layer to the output layer
@@ -156,17 +158,20 @@ class BridgeMovements(object):
         except:
             ap.AddError("Failure to copy {0} to {1}".format(bridge_layer, out_layer))
             return
-    
+
         STAT_FLD = u"SAR_STAT" # Define the status field
         COND_FLD = u"SAR_COND" # Define text status field
-        X_FLD = u"COOR_X"      # Definte x-coordinate field for bridge
-        Y_FLD = u"COOR_Y"      # Definte y-coordinate field for bridge
+        X_FLD = u"COOR_X"      # Define x-coordinate field for bridge
+        Y_FLD = u"COOR_Y"      # Define y-coordinate field for bridge
+
+        BRDG = u"BRDG"   # Define on-bridge field for squeesar
+        defaultValue = str(0)      # Not on bridge
 
         # Check if the status field already exists in the output layer
         if ap.ListFields(out_layer, STAT_FLD):
             ap.AddWarning("Overwriting existing {0} field values".format(STAT_FLD))
         else:
-            # Add the total variation field to the shape file
+            # Add the status field to the shape file
             try:
                 ap.management.AddField(out_layer, STAT_FLD, "FLOAT")
             except:
@@ -177,7 +182,7 @@ class BridgeMovements(object):
         if ap.ListFields(out_layer, COND_FLD):
             ap.AddWarning("Overwriting existing {0} field values".format(COND_FLD))
         else:
-            # Add the total variation field to the shape file
+            # Add the condition field to the shape file
             try:
                 ap.management.AddField(out_layer, COND_FLD, "TEXT")
             except:
@@ -188,7 +193,7 @@ class BridgeMovements(object):
         if ap.ListFields(out_layer, X_FLD):
             ap.AddWarning("Overwriting existing {0} field values".format(X_FLD))
         else:
-            # Add the total variation field to the shape file
+            # Add the x-coordinate field to the shape file
             try:
                 ap.management.AddField(out_layer, X_FLD, "FLOAT")
             except:
@@ -199,11 +204,23 @@ class BridgeMovements(object):
         if ap.ListFields(out_layer, Y_FLD):
             ap.AddWarning("Overwriting existing {0} field values".format(Y_FLD))
         else:
-            # Add the total variation field to the shape file
+            # Add the y-coordinate field to the shape file
             try:
                 ap.management.AddField(out_layer, Y_FLD, "FLOAT")
             except:
                 ap.AddError("Failure to create {0} field in {1}".format(Y_FLD, out_layer))
+                return
+
+        # Check if the on-bridge field already exists in the squeesar layer
+        if ap.ListFields(sqsar_layer, BRDG):
+            ap.AddWarning("Overwriting existing {0} field values".format(BRDG))
+        else:
+            # Add the on-bridge field to the shape file
+            try:
+                ap.management.AddField(sqsar_layer, BRDG, "TEXT")
+                ap.AssignDefaultToField_management(sqsar_layer, BRDG, defaultValue)
+            except Exception as e:
+                ap.AddError("Failure to create {0} field in {1}: {2}".format(BRDG, sqsar_layer, e))
                 return
 
         # Get the list of fields with date format in the SqueeSAR layer
@@ -250,12 +267,12 @@ class BridgeMovements(object):
                                                  "FID = " + b_id)
             # initialize status
             status = 0 # good bridge
-            status_strng = "GOOD"  
+            status_strng = "GOOD"
 
             # Get all heights to check if points are on the bridge or not
             ssar_height = ap.da.FeatureClassToNumPyArray(sqsar_layer,['HEIGHT'])
-            ssar_height = ssar_height.astype(np.float) 
-            # ap.AddMessage("Number of points before threshold: {0}".format(ssar_height.size)) 
+            ssar_height = ssar_height.astype(np.float)
+            # ap.AddMessage("Number of points before threshold: {0}".format(ssar_height.size))
 
             # Check if selection is empty
             if ssar_height.size == 0: # no SQUEE-SAR data within bridge
@@ -270,20 +287,27 @@ class BridgeMovements(object):
                 b = bridge_cursor.next()
                 continue
 
-          # Remove squeesar points that are not on the bridge
-          # Check to see if any points are more than 6 meters below highest
-          # point - assuming highest point is on the bridge
+            # Remove squeesar points that are not on the bridge
+            # Check to see if any points are more than 6 meters below highest
+            # point - assuming highest point is on the bridge
 
-            height_max = np.amax(ssar_height)
-            # ap.AddMessage("Max height is: {0}".format(height_max))
-            height_threshold = height_max - 3 # anything over 3 meters below highest point may be on road
+            height_median = np.median(ssar_height)
+            # ap.AddMessage("Median height is: {0}".format(height_median))
+            height_threshold = height_median - 3 # anything over 3 meters below median point may be on road
             # ap.AddMessage("Threshold height is: {0}".format(height_threshold))
+
+### SHOULD ALSO CHECK IF IT IS ABOVE THE HEIGHT (+-3m)
 
             ap.management.SelectLayerByAttribute(sqsar_layer,'SUBSET_SELECTION',
                                                '"HEIGHT" >= ' + str(height_threshold))
 
+            # http://gis.stackexchange.com/questions/88320/using-variable-to-calculate-field-with-arcpy-as-script-in-toolbox
+            defaultValue = str(1)
+            # these points are on the bridge, so set them to value of 1
+            ap.CalculateField_management(sqsar_layer, BRDG, "'" + defaultValue + "'", "PYTHON")
+
             # Get all velocities
-            ssar_vel = ap.da.FeatureClassToNumPyArray(sqsar_layer,['VEL']) 
+            ssar_vel = ap.da.FeatureClassToNumPyArray(sqsar_layer,['VEL'])
             ssar_vel = ssar_vel.astype(np.float)
             ap.AddMessage("Number of points on bridge: {0}".format(ssar_vel.size))
 
@@ -306,7 +330,7 @@ class BridgeMovements(object):
 
             # The following is code to check how far apart the data is spaced.
             # We want to take points that are about a month apart, in order to
-            # calculate the displacement/month. 
+            # calculate the displacement/month.
 
             # http://code.activestate.com/recipes/577274-subtract-or-add-a-month-to-a-datetimedate-or-datet/
             # add_month method by: Garel Alex
@@ -333,32 +357,37 @@ class BridgeMovements(object):
                         return candidate
 
             start_date = date_fields[0]
-            year = int(start_date[1:5]) 
+            year = int(start_date[1:5])
             month = int(start_date[5:7])
             day = int(start_date[7:9])
-            t0 = datetime(year,month,day) 
+            t0 = datetime(year,month,day)
             t1 = add_month(t0)
 
-            # initialize list of average velocities
+            # initialize list of average velocities - this is a list of lists
             vel_list = []
+
+### WHAT IF THERE ARE MORE THAN 61 DATES? SHOULD THIS BE [1:]?
 
             for date in date_fields[1:61]:
 
                 year = int(date[1:5])
                 month = int(date[5:7])
                 day = int(date[7:9])
-                t = datetime(year,month,day) 
+                t = datetime(year,month,day)
 
                 if t < t1:
                         continue # time of this entry is not a month away from start date
                 else:
-                        months_apart = ((t - t0).days)/30 # to convert into mm/month
+                        months_apart = ((t - t0).days)/30 # to convert into months
                         vel = np.absolute((ssar_disp[date] - ssar_disp[start_date])/months_apart)
                         vel_list.append(vel)
 
                         start_date = date # new start date
-                        t0 = t 
+                        t0 = t
                         t1 = add_month(t0)
+
+### WHAT ABOUT DOING A LINEAR INTERPOLATION OF THE POINTS BETWEEN T AND T0?
+### IT WOULD REDUCE THE NOISE IF THERE ARE MORE THAN 2 POINTS.
 
                         if np.max(vel) >= 25.4*critical_thresh:
                                 status = 2.5
@@ -374,7 +403,7 @@ class BridgeMovements(object):
                 vel_array = np.empty([ssar_vel.size, len(vel_list)])
                 for j in range(0,len(vel_list)):
                         vel_array[0:ssar_vel.size,j] = vel_list[j] # put all average velocities in one numpy array
-                # ap.AddMessage("Array of average velocities: {0}".format(vel_array[:,0]))
+                # ap.AddMessage("Array of average velocities: {0}".format(vel_array))
 
                 # if change over 1 year in any disp is over warning threshold (default 1"/year), raise warning
                 # must convert to mm
@@ -414,7 +443,13 @@ class BridgeMovements(object):
                                                 # "WITHIN",
                                                 # out_layer)
 
+        # Symbology
+        symbol_layer = os.path.dirname(os.path.realpath(__file__)) +u"\BridgeMovementsSymbology.lyr"
+
         sym_layer_obj = ap.mapping.Layer(symbol_layer)
+        # Fixing broken link of the symbology layer
+        new_path = os.path.dirname(os.path.realpath(__file__)) + "\\BridgeMovementsDemoData\\"
+        sym_layer_obj.replaceDataSource(new_path,"SHAPEFILE_WORKSPACE", "Bridges_Demo_Data")
         ap.management.ApplySymbologyFromLayer(out_layer, sym_layer_obj)
         out_layer_obj = ap.mapping.Layer(out_layer)
         if out_layer_obj.symbologyType == "GRADUATED_COLORS":
@@ -425,12 +460,54 @@ class BridgeMovements(object):
         # clearing last selection
         ap.management.SelectLayerByAttribute(sqsar_layer,'REMOVE_FROM_SELECTION',
                                                '"HEIGHT" >= ' + str(height_threshold))
+        # Placing labels on the data
+        # From https://gist.github.com/avaccari/80c34d561d013483bec9
+        # ApLabels.py by Andrea Vaccari
+
+        # Load the reference to the current map document.
+        # Caveat: not sure if it will work if the toolbox is running in background.
+        # This is because background execution is performed within a separate kernel.
+        mxd = ap.mapping.MapDocument('CURRENT')
+
+        # Get list of dataframes. There might be more than one dataframe in a map document. You
+        # can use the wildcard to specify which one is of interest. Here we are "blindly" extracting
+        # the first element in the returned list
+        dfs = ap.mapping.ListDataFrames(mxd, "")
+        df = dfs[0]
+
+        # Get list of layers. Once again there might be more than one layer within the selected
+        # dataframe. Wildcard can be used to specify the subset or specific one. We are picking
+        # the layer that holds our squeesar data, and the labels for that data
+        lyrs = ap.mapping.ListLayers(mxd,sqsar_layer, df) # (map_document_or_layer, {wildcard}, {data_frame})
+        lyr = lyrs[0]
+
+        # Check if the layer supports label classes
+        if lyr.supports("LABELCLASSES"):
+                # Get list of labelClasses. There might be more than one label class.
+                # We are selecting/defining the first.
+                lcs = lyr.labelClasses
+                lc = lcs[0]
+
+                lc.SQLQuery = '"BRDG" > ' + str(0)
+
+                # Define the expression to use. Here we are using the attributes [HEIGHT]
+                # and [VEL] from the display data table.
+                # Notes:
+                # - switching ' with " didn't work
+                # - inserting escaped characters such as '\n' did not work
+                lc.expression = '[HEIGHT] + "m, " + [VEL] + "mm/yr"'
+
+                # Turn the labels on for the entire layer.
+                lyr.showLabels = True
+
+                # Refresh the current view
+                ap.RefreshActiveView()
 
         # zooming to bad bridge!
         if bad_id:
                 ap.AddMessage("Zooming to last identified bad bridge")
                 ap.SelectLayerByAttribute_management(bridge_layer,"NEW_SELECTION","FID = " + bad_id )
-                mxd = ap.mapping.MapDocument('CURRENT')
+                # mxd = ap.mapping.MapDocument('CURRENT')
                 df = ap.mapping.ListDataFrames(mxd, "Layers") [0]
                 df.zoomToSelectedFeatures()
                 ap.RefreshActiveView()
