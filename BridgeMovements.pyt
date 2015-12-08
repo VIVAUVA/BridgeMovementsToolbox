@@ -447,9 +447,14 @@ class BridgeMovements(object):
         symbol_layer = os.path.dirname(os.path.realpath(__file__)) +u"\BridgeMovementsSymbology.lyr"
 
         sym_layer_obj = ap.mapping.Layer(symbol_layer)
+
         # Fixing broken link of the symbology layer
-        new_path = os.path.dirname(os.path.realpath(__file__)) + "\\BridgeMovementsDemoData\\"
-        sym_layer_obj.replaceDataSource(new_path,"SHAPEFILE_WORKSPACE", "Bridges_Demo_Data")
+        data_loc = ap.Describe(bridge_layer).catalogPath
+        (new_path, file) = os.path.split(data_loc)
+        (file_name, file_ext) = os.path.splitext(file)
+
+        sym_layer_obj.replaceDataSource(str(new_path), "SHAPEFILE_WORKSPACE", str(file_name))
+
         ap.management.ApplySymbologyFromLayer(out_layer, sym_layer_obj)
         out_layer_obj = ap.mapping.Layer(out_layer)
         if out_layer_obj.symbologyType == "GRADUATED_COLORS":
